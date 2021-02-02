@@ -10,11 +10,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
 import 'package:flutter_blue_beacon_androidx/service/broadcastKeyService.dart';
 import 'package:flutter_blue_beacon_androidx/service/currentUuidService.dart';
+import 'package:flutter_blue_beacon_androidx/service/httpService.dart';
 import 'package:flutter_blue_beacon_androidx/service/permissionsService.dart';
 import 'package:flutter_blue_beacon_androidx/service/protocoloService.dart';
+import 'package:flutter_blue_beacon_androidx/service/dispositivosGuardados.dart';
 
 import 'package:uuid/uuid.dart';
-
+import 'package:flutter_blue_beacon_androidx/service/desencryptUiid.dart';
 import 'functions/beacon.dart';
 import 'functions/flutter_blue_beacon.dart';
 
@@ -37,7 +39,7 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
 
   /// Scanning
   StreamSubscription _scanSubscription;
-  Map<int, Beacon> beacons = new Map();
+  Map<String, Beacon> beacons = new Map();
   bool isScanning = false;
 
   /// State
@@ -63,23 +65,22 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
 
   _clearAllBeacons() {
     setState(() {
-      beacons = Map<int, Beacon>();
+      beacons = Map<String, Beacon>();
     });
   }
 
   _startScan() {
     print("Scanning now");
-    _scanSubscription = flutterBlueBeacon
-        .scan(timeout: const Duration(seconds: 20))
-        .listen((beacon) {
+    _scanSubscription =
+        flutterBlueBeacon.scan(Duration(seconds: 20)).listen((beacon) {
       print('localName: ${beacon.scanResult.advertisementData.localName}');
       print(
           'manufacturerData: ${beacon.scanResult.advertisementData.manufacturerData}');
       print('serviceData: ${beacon.scanResult.advertisementData.serviceData}');
       setState(() {
-        beacons[beacon.hash] = beacon;
+        beacons[beacon.id] = beacon;
       });
-    }, onDone: _stopScan);
+    });
 
     setState(() {
       isScanning = true;
@@ -108,9 +109,16 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
     }
   }
 
+  DesencryptUuid _desencryptUuid = DesencryptUuid();
+  DispositivosGuardadosService sqlLiteService =
+      new DispositivosGuardadosService();
   List<Widget> _buildScanResultTiles() {
     return beacons.values.map<Widget>((b) {
       if (b is IBeacon) {
+        if (b.distance < 3) {
+          sqlLiteService.insertUuid(b.uuid);
+        }
+
         return Card(
           child: Column(
             children: [
@@ -141,6 +149,16 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
               ),
               Text(
                 "IBeacon",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15),
+              ),
+              Text(
+                "Distancia",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 20),
+              ),
+              Text(
+                b.distance.toString(),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 15),
               ),
@@ -232,26 +250,43 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
     return new LinearProgressIndicator();
   }
 
+  bool alerta = false;
   BroadcastKeyService broadCastKeyservice = new BroadcastKeyService();
   bool inicioBroadcast = false;
   bool primera = true;
-
+  HttpService httpService = HttpService();
   @override
   Widget build(BuildContext context) {
+    Timer.periodic(Duration(seconds: 30), (timer) {
+      _startScan();
+    });
+
+    Timer.periodic(Duration(seconds: 120), (timer) {
+      _desencryptUuid.revisarPasswordPublicadas().then((value) {
+        if (value) {
+          setState(() {
+            alerta = value;
+          });
+        }
+      });
+    });
+    /*httpService.getPassword();
     broadCastKeyservice.getKey();
     ProtocoloService protocoloService = new ProtocoloService();
     protocoloService.cryptoBrodcasKey();
-    protocoloService.changeCryptoKey();
+    protocoloService.changeCryptoKey();*/
     CurrentUuidService currentUuidService = CurrentUuidService();
-    currentUuidService.getCurrentUuid().then((value) => value.listen((event) {
-          if (event != null) {
-            beaconBroadcast();
+    currentUuidService.getCurrentUuid3().then((event) {
+      print(event);
+      if (event != null) {
+        beaconBroadcast();
 
-            v4 = event;
-          } else {
-            inicioBroadcast = false;
-          }
-        }));
+        v4 = event;
+      } else {
+        currentUuidService.setCurrentUuid(uuid.v4());
+        inicioBroadcast = false;
+      }
+    });
 
     if (primera) {
       PermissionsService().requestLocationAlwaysPermission();
@@ -268,12 +303,81 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
 
     return new MaterialApp(
       home: new Scaffold(
-        floatingActionButton: _buildScanningButton(),
         body: new Stack(
           children: <Widget>[
-            (isScanning) ? _buildProgressBarTile() : new Container(),
-            new ListView(
-              children: tiles,
+            Container(
+              margin: const EdgeInsets.only(bottom: 20.0, top: 70),
+              child: RaisedButton(
+                onPressed: () {
+                  currentUuidService.getCurrentUuid3().then((value) {
+                    httpService.setPassword(uuid.unparse(value));
+                    currentUuidService.setCurrentUuid(uuid.v4());
+                    currentUuidService.getCurrentUuid3().then((value) {
+                      beaconBroadcaste.setUUID(uuid.unparse(value));
+                      print(uuid.unparse(value));
+                      beaconBroadcaste
+                          .stop()
+                          .then((value) => {beaconBroadcaste.start()});
+                    });
+                  });
+                },
+                textColor: Colors.white,
+                padding: const EdgeInsets.all(0.0),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: <Color>[
+                        Color(0xFF0D47A1),
+                        Color(0xFF1976D2),
+                        Color(0xFF42A5F5),
+                      ],
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(10.0),
+                  child: const Text('tengo coronavirus',
+                      style: TextStyle(fontSize: 20)),
+                ),
+              ),
+            ),
+            alerta
+                ? Container(
+                    margin: const EdgeInsets.only(bottom: 20.0, top: 150),
+                    child: Card(
+                      child: new Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('Cuidado'),
+                          Text(
+                              "Usted estuvo cerca de una persona con coronavirus"),
+                          RaisedButton(
+                            onPressed: () {
+                              setState(() {
+                                alerta = false;
+                              });
+                            },
+                            textColor: Colors.white,
+                            padding: const EdgeInsets.all(0.0),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: <Color>[Colors.red, Colors.amber],
+                                ),
+                              ),
+                              padding: const EdgeInsets.all(10.0),
+                              child: const Text('Entiendo',
+                                  style: TextStyle(fontSize: 20)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ))
+                : Container(),
+            Container(
+              margin: EdgeInsets.only(top: 290),
+              child: new ListView(
+                children: tiles,
+              ),
             )
           ],
         ),
@@ -281,15 +385,15 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
     );
   }
 
+  BeaconBroadcast beaconBroadcaste = BeaconBroadcast();
   var uuid = Uuid();
   Future<void> beaconBroadcast() async {
-    BeaconBroadcast beaconBroadcast = BeaconBroadcast();
     BeaconStatus transmissionSupportStatus =
-        await beaconBroadcast.checkTransmissionSupported();
+        await beaconBroadcaste.checkTransmissionSupported();
 
     if (v4 != null && !inicioBroadcast) {
       inicioBroadcast = true;
-      beaconBroadcast
+      beaconBroadcaste
           .setUUID(uuid.unparse(v4))
           .setMajorId(1)
           .setMinorId(100)

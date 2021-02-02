@@ -13,8 +13,8 @@ class FlutterBlueBeacon {
 
   static FlutterBlueBeacon get instance => _instance;
 
-  Stream<Beacon> scan({@required Duration timeout}) => FlutterBlue.instance
-      .scan(timeout: timeout)
+  Stream<Beacon> scan(Duration duration) => FlutterBlue.instance
+      .scan(timeout: duration)
       .map((scanResult) {
         return Beacon.fromScanResult(scanResult);
       })

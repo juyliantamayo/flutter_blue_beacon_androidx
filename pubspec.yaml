@@ -46,6 +46,9 @@ dev_dependencies:
   crypto: ^2.1.5
   aes_crypt: ^0.1.1
   path: ^1.7.0
+  http: ^0.12.2
+  rflutter_alert: ^1.0.3
+
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
